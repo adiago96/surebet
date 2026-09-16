@@ -34,6 +34,11 @@
   .mq-result.ok { color:#4ade80; }
   .mq-result.info { color:#9aa0a6; }
   .mq-result.err { color:#f87171; }
+  .mq-hint.target-ok { color:#22d3ee; font-weight:600; }
+  .mq-hint.target-bad { color:#f87171; }
+  .glossary { background:#12151a; border:1px dashed #333; border-radius:6px; padding:10px 12px; margin:10px 0; font-size:12px; color:#9aa0a6; }
+  .glossary b { color:#e6e6e6; }
+  .glossary .warn { color:#facc15; display:block; margin-top:6px; }
   button.small { padding:5px 10px; font-size:13px; border-radius:6px; border:1px solid #333; background:#1b1e24; color:#e6e6e6; cursor:pointer; }
   button.small:hover { background:#22252b; }
   .tabs { display:flex; gap:6px; margin-bottom:16px; border-bottom:1px solid #2a2d33; }
@@ -109,6 +114,8 @@
         </select>
         <input id="mq-line" type="number" step="0.25" placeholder="Línea (si aplica, ej. -1.5 / 2.5)" style="display:none">
       </div>
+
+      <div id="mq-glossary" class="glossary"></div>
 
       <div id="mq-selections"></div>
       <div id="mq-summary" class="mq-result info"></div>
@@ -225,6 +232,51 @@ setInterval(load, 15000);
 const BOOKMAKERS = ['bet365', 'winamax_es', 'william_hill', 'betfair', 'bwin', 'unibet_es', 'codere', 'sportium', 'luckia', 'otro'];
 const SELECTION_LABELS = { home: 'Local', away: 'Visitante', draw: 'Empate', over: 'Over', under: 'Under' };
 let knownEvents = {}; // event_id -> {sport_key, home, away, commence_time}
+let mqKnownState = {}; // selection -> {price_decimal, bookmaker, source} (ya guardado, de cualquier fuente)
+
+// Terminología habitual del sector para cada familia de mercado. Son los
+// nombres MÁS COMUNES que usan las casas para el MISMO mercado matemático —
+// no una lista verificada casa por casa (cada una puede cambiar el texto
+// exacto de su web en cualquier momento), sino una guía de qué buscar.
+// IMPORTANTE: hándicap y totales NUNCA son el mismo mercado aunque algunas
+// casas usen la palabra "línea" para las dos cosas — el hándicap depende de
+// quién gana y por cuánto margen, el total depende de la suma de goles/
+// puntos de ambos equipos, gane quien gane. No los mezcles nunca.
+const MARKET_GLOSSARY = {
+  three_way: {
+    label: '1X2 / Resultado del partido',
+    synonyms: '1X2, Ganador del partido, Match Result, Resultado final (tiempo reglamentario, sin prórroga)',
+    warn: null,
+  },
+  moneyline_2way: {
+    label: 'Ganador (sin empate posible)',
+    synonyms: 'Moneyline, Match Winner, Ganador del set/partido (tenis, básket, béisbol...)',
+    warn: null,
+  },
+  handicap: {
+    label: 'Hándicap',
+    synonyms: 'Hándicap Asiático (Asian Handicap), Hándicap Europeo, Spread, Línea de hándicap',
+    warn: 'Depende de QUIÉN GANA y por cuánto margen. No es lo mismo que "Total de goles/puntos".',
+  },
+  totals: {
+    label: 'Total (Over/Under)',
+    synonyms: 'Total de goles/puntos, Más/Menos de X, Over/Under, Total del partido',
+    warn: 'Depende de la SUMA de goles/puntos de los dos equipos, gane quien gane. No es lo mismo que "Hándicap".',
+  },
+  team_totals: {
+    label: 'Total por equipo',
+    synonyms: 'Team Total, Total del equipo local/visitante, Goles/puntos de [equipo]',
+    warn: 'Es el total de UN SOLO equipo, no el total combinado del partido (eso sería "totals").',
+  },
+};
+
+function updateGlossary(family) {
+  const g = MARKET_GLOSSARY[family];
+  const box = document.getElementById('mq-glossary');
+  if (!g) { box.innerHTML = ''; return; }
+  box.innerHTML = `<b>${g.label}</b> — así lo llaman habitualmente las casas: ${g.synonyms}.` +
+    (g.warn ? `<span class="warn">⚠️ ${g.warn}</span>` : '');
+}
 
 async function loadEvents() {
   const res = await fetch('/api/manual/events');
@@ -269,6 +321,7 @@ async function renderSelections() {
   const family = document.getElementById('mq-family').value;
   document.getElementById('mq-line').style.display =
     ['handicap', 'totals', 'team_totals'].includes(family) ? 'inline-block' : 'none';
+  updateGlossary(family);
 
   const res = await fetch(`/api/manual/market-fields?family=${family}`);
   const data = await res.json();
@@ -277,6 +330,7 @@ async function renderSelections() {
   for (const sel of data.selections) {
     const row = document.createElement('div');
     row.className = 'mq-sel';
+    row.dataset.sel = sel;
     row.innerHTML = `
       <label>${SELECTION_LABELS[sel] || sel}</label>
       <select class="mq-bookmaker">${BOOKMAKERS.map(b => `<option value="${b}">${b}</option>`).join('')}</select>
@@ -286,6 +340,7 @@ async function renderSelections() {
     `;
     box.appendChild(row);
   }
+  box.querySelectorAll('.mq-price').forEach(inp => inp.addEventListener('input', recomputeTargets));
   await refreshHints();
 }
 
@@ -293,16 +348,75 @@ async function refreshHints() {
   const ev = currentEventData();
   const family = document.getElementById('mq-family').value;
   const line = document.getElementById('mq-line').value;
-  if (!ev) return;
-  const params = new URLSearchParams({ sport_key: ev.sport_key, event_id: ev.event_id, family });
-  if (line) params.set('line', line);
-  const res = await fetch(`/api/manual/market-state?${params}`);
-  if (!res.ok) return;
-  const state = await res.json();
-  document.querySelectorAll('.mq-hint').forEach(span => {
-    const sel = span.dataset.sel;
-    const known = state[sel];
-    span.textContent = known ? `ya hay ${known.price_decimal} en ${known.bookmaker} (${known.source})` : 'sin datos previos';
+  mqKnownState = {};
+  if (ev) {
+    const params = new URLSearchParams({ sport_key: ev.sport_key, event_id: ev.event_id, family });
+    if (line) params.set('line', line);
+    const res = await fetch(`/api/manual/market-state?${params}`);
+    if (res.ok) mqKnownState = await res.json();
+  }
+  recomputeTargets();
+}
+
+// El corazón de "no tener que pensar": en cuanto se conoce (guardado o
+// simplemente tecleado ahora mismo, sin guardar todavía) el precio de todas
+// las selecciones de un mercado MENOS UNA, la cuota mínima que hace falta
+// en esa última para cerrar arbitraje es pura aritmética:
+//   objetivo = 1 / (1 - suma(1/cuota_i) de las demás selecciones)
+// Si ya faltan 2 o más, no hay un único objetivo posible (depende de cómo
+// se repartan entre ellas), así que se avisa en vez de inventar un número.
+function recomputeTargets() {
+  const rows = Array.from(document.querySelectorAll('#mq-selections .mq-sel'));
+  if (!rows.length) return;
+
+  const combined = {};
+  for (const sel in mqKnownState) {
+    combined[sel] = { price: mqKnownState[sel].price_decimal, label: `ya hay ${mqKnownState[sel].price_decimal} en ${mqKnownState[sel].bookmaker}` };
+  }
+  const typedHere = {};
+  rows.forEach(row => {
+    const sel = row.dataset.sel;
+    const typed = parseFloat(row.querySelector('.mq-price').value);
+    if (typed && typed > 1.0) {
+      typedHere[sel] = true;
+      combined[sel] = { price: typed, label: `tecleado aquí: ${typed}` };
+    }
+  });
+
+  const allSelections = rows.map(r => r.dataset.sel);
+  const missing = allSelections.filter(s => !(s in combined));
+  const sumKnownInv = Object.values(combined).reduce((acc, c) => acc + 1 / c.price, 0);
+
+  rows.forEach(row => {
+    const sel = row.dataset.sel;
+    const hint = row.querySelector('.mq-hint');
+    hint.className = 'mq-hint';
+
+    if (typedHere[sel]) {
+      // El usuario está escribiendo aquí mismo: si ya había algo conocido de
+      // otra fuente para esta misma selección, se lo dejamos como referencia.
+      hint.textContent = mqKnownState[sel] ? `(ya había ${mqKnownState[sel].price_decimal} en ${mqKnownState[sel].bookmaker})` : '';
+      return;
+    }
+    if (sel in combined) {
+      hint.textContent = combined[sel].label;
+      return;
+    }
+    // Esta selección está vacía: ¿se puede calcular un objetivo exacto?
+    const missingWithoutThis = missing.filter(s => s !== sel);
+    if (missingWithoutThis.length > 0) {
+      hint.textContent = `faltan ${missingWithoutThis.length} cuota(s) más para calcular el objetivo`;
+      return;
+    }
+    const sumOthers = sumKnownInv; // todas las demás ya están en `combined`
+    if (sumOthers >= 1) {
+      hint.textContent = 'imposible: las demás cuotas ya suman ≥100% de probabilidad implícita';
+      hint.className = 'mq-hint target-bad';
+      return;
+    }
+    const target = 1 / (1 - sumOthers);
+    hint.textContent = `🎯 objetivo: busca ≥ ${target.toFixed(2)} en otra casa`;
+    hint.className = 'mq-hint target-ok';
   });
 }
 
@@ -350,6 +464,7 @@ async function submitQuote(selection, btn) {
       summary.className = 'mq-result ok';
       summary.textContent = `${data.event} — ${data.market} — beneficio ${data.profit_pct.toFixed(2)}% — veredicto ${data.verdict} (riesgo ${data.execution_risk}/100)`;
     }
+    row.querySelector('.mq-price').value = ''; // ya está guardada: la seguirá mostrando refreshHints() como "ya hay..."
     await loadEvents();
     await refreshHints();
     await load(); // refresca la tabla de oportunidades por si esto generó una nueva
