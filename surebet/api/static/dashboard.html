@@ -22,46 +22,161 @@
   .risk-med { color:#facc15; }
   .risk-high { color:#f87171; }
   .empty { color:#666; padding: 40px 0; text-align:center; }
+  .card { background:#161920; border:1px solid #2a2d33; border-radius:8px; padding:14px 16px; margin-bottom:20px; }
+  .card h2 { font-size:15px; margin:0 0 4px; }
+  .card .sub { margin-bottom:12px; }
+  .mq-row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:8px; }
+  .mq-row select, .mq-row input { background:#1b1e24; color:#e6e6e6; border:1px solid #333; padding:6px 8px; border-radius:6px; }
+  .mq-sel { display:flex; gap:8px; align-items:center; padding:6px 0; border-top:1px solid #22252b; }
+  .mq-sel label { width:110px; color:#9aa0a6; font-size:13px; }
+  .mq-hint { font-size:12px; color:#666; min-width:190px; }
+  .mq-result { font-size:13px; margin-top:4px; }
+  .mq-result.ok { color:#4ade80; }
+  .mq-result.info { color:#9aa0a6; }
+  .mq-result.err { color:#f87171; }
+  button.small { padding:5px 10px; font-size:13px; border-radius:6px; border:1px solid #333; background:#1b1e24; color:#e6e6e6; cursor:pointer; }
+  button.small:hover { background:#22252b; }
+  .tabs { display:flex; gap:6px; margin-bottom:16px; border-bottom:1px solid #2a2d33; }
+  .tab-btn { background:none; border:none; color:#9aa0a6; padding:10px 14px; font-size:14px; cursor:pointer; border-bottom:2px solid transparent; }
+  .tab-btn:hover { color:#e6e6e6; }
+  .tab-btn.active { color:#e6e6e6; border-bottom-color:#4ade80; }
+  .bets-summary { font-size:13px; color:#9aa0a6; margin-bottom:14px; }
 </style>
 </head>
 <body>
   <h1>Surebet Dashboard</h1>
   <div class="sub">Oportunidades de arbitraje detectadas · matemático ≠ ejecutable, revisa siempre el veredicto y el riesgo</div>
 
-  <div class="filters">
-    <input id="f-sport" placeholder="Deporte contiene...">
-    <input id="f-minprofit" type="number" step="0.1" placeholder="Beneficio mínimo %">
-    <select id="f-verdict">
-      <option value="">Todos los veredictos</option>
-      <option value="VALID_ARB">VALID_ARB</option>
-      <option value="SUSPICIOUS_ARB">SUSPICIOUS_ARB</option>
-      <option value="ROUNDING_UNPROFITABLE">ROUNDING_UNPROFITABLE</option>
-      <option value="STALE_DO_NOT_BET">STALE_DO_NOT_BET</option>
-    </select>
-    <select id="f-sort">
-      <option value="profit_desc">Mayor beneficio</option>
-      <option value="risk_asc">Menor riesgo</option>
-      <option value="age_asc">Menor antigüedad</option>
-    </select>
-    <button onclick="load()">Refrescar</button>
+  <div class="tabs">
+    <button class="tab-btn active" id="btn-opportunities" onclick="showTab('opportunities')">Oportunidades</button>
+    <button class="tab-btn" id="btn-capture" onclick="showTab('capture')">Captura rápida</button>
+    <button class="tab-btn" id="btn-bets" onclick="showTab('bets')">Mis apuestas</button>
   </div>
 
-  <table>
-    <thead>
-      <tr>
-        <th>Hora</th><th>Deporte</th><th>Evento</th><th>Mercado</th><th>Línea</th>
-        <th>Beneficio %</th><th>Veredicto</th><th>Riesgo</th><th>Antigüedad (s)</th>
-        <th>Stake total</th><th>Beneficio €</th><th>ROI %</th>
-      </tr>
-    </thead>
-    <tbody id="rows"></tbody>
-  </table>
-  <div id="empty" class="empty" style="display:none">Sin oportunidades todavía. Lanza el scanner: <code>python scripts/run_scanner.py</code></div>
+  <!-- ================= TAB: Oportunidades ================= -->
+  <div id="tab-opportunities" class="tab-panel">
+    <div class="filters">
+      <input id="f-sport" placeholder="Deporte contiene...">
+      <input id="f-minprofit" type="number" step="0.1" placeholder="Beneficio mínimo %">
+      <select id="f-verdict">
+        <option value="">Todos los veredictos</option>
+        <option value="VALID_ARB">VALID_ARB</option>
+        <option value="SUSPICIOUS_ARB">SUSPICIOUS_ARB</option>
+        <option value="ROUNDING_UNPROFITABLE">ROUNDING_UNPROFITABLE</option>
+        <option value="STALE_DO_NOT_BET">STALE_DO_NOT_BET</option>
+      </select>
+      <select id="f-sort">
+        <option value="profit_desc">Mayor beneficio</option>
+        <option value="risk_asc">Menor riesgo</option>
+        <option value="age_asc">Menor antigüedad</option>
+      </select>
+      <button onclick="load()">Refrescar</button>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Hora</th><th>Deporte</th><th>Evento</th><th>Mercado</th><th>Línea</th>
+          <th>Beneficio %</th><th>Veredicto</th><th>Riesgo</th><th>Antigüedad (s)</th>
+          <th>Stake total</th><th>Beneficio €</th><th>ROI %</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div id="empty" class="empty" style="display:none">Sin oportunidades todavía. Lanza el scanner: <code>python scripts/run_scanner.py</code></div>
+  </div>
+
+  <!-- ================= TAB: Captura rápida ================= -->
+  <div id="tab-capture" class="tab-panel" style="display:none">
+    <div class="card">
+      <h2>Captura rápida</h2>
+      <div class="sub">Navega tú mismo a bet365 / Winamax ES / William Hill / Bwin / Unibet / Codere / Sportium (sin automatizar nada) y teclea aquí la cuota que ves. Se evalúa el arbitraje al instante contra lo que ya se conoce de otras casas.</div>
+
+      <div class="mq-row">
+        <select id="mq-event"><option value="">— evento nuevo —</option></select>
+        <input id="mq-home" placeholder="Local" style="display:none">
+        <input id="mq-away" placeholder="Visitante" style="display:none">
+        <input id="mq-sport-key" placeholder="sport_key (p.ej. soccer_spain_la_liga)" style="display:none">
+        <input id="mq-commence" type="datetime-local" style="display:none">
+      </div>
+      <div class="mq-row">
+        <select id="mq-family">
+          <option value="three_way">Fútbol 1X2 (3 vías)</option>
+          <option value="moneyline_2way">Moneyline 2 vías (tenis, básket sin empate...)</option>
+          <option value="handicap">Hándicap / Asian Handicap</option>
+          <option value="totals">Totales (over/under)</option>
+          <option value="team_totals">Totales por equipo</option>
+        </select>
+        <input id="mq-line" type="number" step="0.25" placeholder="Línea (si aplica, ej. -1.5 / 2.5)" style="display:none">
+      </div>
+
+      <div id="mq-selections"></div>
+      <div id="mq-summary" class="mq-result info"></div>
+    </div>
+  </div>
+
+  <!-- ================= TAB: Mis apuestas ================= -->
+  <div id="tab-bets" class="tab-panel" style="display:none">
+    <div class="card">
+      <h2>Registrar apuesta</h2>
+      <div class="sub">Anota a qué has apostado de verdad, en qué casas y con qué stake. Puedes vincularla a una oportunidad ya detectada (rellena casas/selecciones/cuotas por ti) o registrar una apuesta libre.</div>
+
+      <div class="mq-row">
+        <select id="bet-opportunity" onchange="onBetOpportunityChange()">
+          <option value="">— apuesta libre (sin oportunidad detectada) —</option>
+        </select>
+      </div>
+      <div class="mq-row">
+        <input id="bet-home" placeholder="Local / lado A">
+        <input id="bet-away" placeholder="Visitante / lado B">
+        <input id="bet-market" placeholder="Mercado (p.ej. three_way, handicap -1.5...)">
+      </div>
+
+      <div id="bet-legs"></div>
+      <div class="mq-row">
+        <button class="small" onclick="addBetLegRow()">+ añadir pierna</button>
+      </div>
+      <div class="mq-row">
+        <input id="bet-notes" placeholder="Notas (opcional)" style="min-width:300px">
+        <button class="small" onclick="submitBet()">Guardar apuesta</button>
+      </div>
+      <div id="bet-result" class="mq-result info"></div>
+    </div>
+
+    <div class="bets-summary" id="bets-summary">Cargando resumen...</div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Fecha</th><th>Evento</th><th>Mercado</th><th>Piernas (casa · selección @ cuota · stake)</th>
+          <th>Stake total</th><th>Estado</th><th>Retorno / liquidar</th><th>Beneficio</th>
+        </tr>
+      </thead>
+      <tbody id="bets-rows"></tbody>
+    </table>
+    <div id="bets-empty" class="empty" style="display:none">Todavía no has registrado ninguna apuesta.</div>
+  </div>
 
 <script>
+// --- Pestañas ---
+function showTab(name) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.style.display = 'none');
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).style.display = 'block';
+  document.getElementById('btn-' + name).classList.add('active');
+  if (name === 'bets') {
+    populateBetOpportunitySelect();
+    loadBets();
+  }
+}
+
+// --- Oportunidades ---
+let lastOpportunities = [];
+
 async function load() {
   const res = await fetch('/api/opportunities?limit=500');
   let data = await res.json();
+  lastOpportunities = data; // sin filtrar: para poder vincular "Mis apuestas" a cualquiera de estas
 
   const sport = document.getElementById('f-sport').value.toLowerCase();
   const minProfit = parseFloat(document.getElementById('f-minprofit').value) || -Infinity;
@@ -105,6 +220,299 @@ async function load() {
 document.querySelectorAll('.filters input, .filters select').forEach(el => el.addEventListener('input', load));
 load();
 setInterval(load, 15000);
+
+// --- Captura rápida ---
+const BOOKMAKERS = ['bet365', 'winamax_es', 'william_hill', 'betfair', 'bwin', 'unibet_es', 'codere', 'sportium', 'luckia', 'otro'];
+const SELECTION_LABELS = { home: 'Local', away: 'Visitante', draw: 'Empate', over: 'Over', under: 'Under' };
+let knownEvents = {}; // event_id -> {sport_key, home, away, commence_time}
+
+async function loadEvents() {
+  const res = await fetch('/api/manual/events');
+  const events = await res.json();
+  const sel = document.getElementById('mq-event');
+  sel.querySelectorAll('option:not(:first-child)').forEach(o => o.remove());
+  knownEvents = {};
+  for (const e of events) {
+    knownEvents[e.event_id] = e;
+    const opt = document.createElement('option');
+    opt.value = e.event_id;
+    opt.textContent = `${e.home} vs ${e.away} (${new Date(e.commence_time + 'Z').toLocaleString()})`;
+    sel.appendChild(opt);
+  }
+}
+
+function toggleNewEventFields() {
+  const isNew = !document.getElementById('mq-event').value;
+  for (const id of ['mq-home', 'mq-away', 'mq-sport-key', 'mq-commence']) {
+    document.getElementById(id).style.display = isNew ? 'inline-block' : 'none';
+  }
+}
+
+function currentEventData() {
+  const eventId = document.getElementById('mq-event').value;
+  if (eventId && knownEvents[eventId]) {
+    const e = knownEvents[eventId];
+    return { event_id: eventId, sport_key: e.sport_key, home: e.home, away: e.away, commence_time: e.commence_time };
+  }
+  const home = document.getElementById('mq-home').value.trim();
+  const away = document.getElementById('mq-away').value.trim();
+  const sportKey = document.getElementById('mq-sport-key').value.trim();
+  const commence = document.getElementById('mq-commence').value;
+  if (!home || !away || !sportKey || !commence) return null;
+  return {
+    event_id: `manual_${sportKey}_${home}_${away}`.replace(/\s+/g, '_').toLowerCase(),
+    sport_key: sportKey, home, away, commence_time: new Date(commence).toISOString(),
+  };
+}
+
+async function renderSelections() {
+  const family = document.getElementById('mq-family').value;
+  document.getElementById('mq-line').style.display =
+    ['handicap', 'totals', 'team_totals'].includes(family) ? 'inline-block' : 'none';
+
+  const res = await fetch(`/api/manual/market-fields?family=${family}`);
+  const data = await res.json();
+  const box = document.getElementById('mq-selections');
+  box.innerHTML = '';
+  for (const sel of data.selections) {
+    const row = document.createElement('div');
+    row.className = 'mq-sel';
+    row.innerHTML = `
+      <label>${SELECTION_LABELS[sel] || sel}</label>
+      <select class="mq-bookmaker">${BOOKMAKERS.map(b => `<option value="${b}">${b}</option>`).join('')}</select>
+      <input class="mq-price" type="number" step="0.01" min="1.01" placeholder="cuota">
+      <button class="small" onclick="submitQuote('${sel}', this)">Guardar</button>
+      <span class="mq-hint" data-sel="${sel}">sin datos previos</span>
+    `;
+    box.appendChild(row);
+  }
+  await refreshHints();
+}
+
+async function refreshHints() {
+  const ev = currentEventData();
+  const family = document.getElementById('mq-family').value;
+  const line = document.getElementById('mq-line').value;
+  if (!ev) return;
+  const params = new URLSearchParams({ sport_key: ev.sport_key, event_id: ev.event_id, family });
+  if (line) params.set('line', line);
+  const res = await fetch(`/api/manual/market-state?${params}`);
+  if (!res.ok) return;
+  const state = await res.json();
+  document.querySelectorAll('.mq-hint').forEach(span => {
+    const sel = span.dataset.sel;
+    const known = state[sel];
+    span.textContent = known ? `ya hay ${known.price_decimal} en ${known.bookmaker} (${known.source})` : 'sin datos previos';
+  });
+}
+
+async function submitQuote(selection, btn) {
+  const ev = currentEventData();
+  const summary = document.getElementById('mq-summary');
+  if (!ev) {
+    summary.className = 'mq-result err';
+    summary.textContent = 'Completa el evento (local, visitante, sport_key y fecha) antes de guardar.';
+    return;
+  }
+  const row = btn.closest('.mq-sel');
+  const bookmaker = row.querySelector('.mq-bookmaker').value;
+  const price = parseFloat(row.querySelector('.mq-price').value);
+  if (!price || price <= 1.0) {
+    summary.className = 'mq-result err';
+    summary.textContent = 'Introduce una cuota decimal válida (> 1.00).';
+    return;
+  }
+  const family = document.getElementById('mq-family').value;
+  const line = document.getElementById('mq-line').value;
+
+  const body = {
+    bookmaker, selection, price_decimal: price, family,
+    sport_key: ev.sport_key, event_id: ev.event_id, home: ev.home, away: ev.away,
+    sport_group: ev.sport_key.split('_')[0], league: ev.sport_key,
+    commence_time: ev.commence_time, line: line ? parseFloat(line) : null,
+  };
+
+  btn.disabled = true;
+  try {
+    const res = await fetch('/api/manual/quote', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      summary.className = 'mq-result err';
+      summary.textContent = data.detail || 'Error al guardar la cuota.';
+      return;
+    }
+    if (data.verdict === 'NOT_ARBITRAGE') {
+      summary.className = 'mq-result info';
+      summary.textContent = `Guardado: ${bookmaker} ${selection} @ ${price}. ${data.message || 'Sin arbitraje todavía.'}`;
+    } else {
+      summary.className = 'mq-result ok';
+      summary.textContent = `${data.event} — ${data.market} — beneficio ${data.profit_pct.toFixed(2)}% — veredicto ${data.verdict} (riesgo ${data.execution_risk}/100)`;
+    }
+    await loadEvents();
+    await refreshHints();
+    await load(); // refresca la tabla de oportunidades por si esto generó una nueva
+  } catch (e) {
+    summary.className = 'mq-result err';
+    summary.textContent = 'No se pudo conectar con el servidor.';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+document.getElementById('mq-event').addEventListener('change', () => { toggleNewEventFields(); refreshHints(); });
+document.getElementById('mq-family').addEventListener('change', renderSelections);
+document.getElementById('mq-line').addEventListener('change', refreshHints);
+loadEvents();
+renderSelections();
+
+// --- Mis apuestas ---
+function populateBetOpportunitySelect() {
+  const sel = document.getElementById('bet-opportunity');
+  sel.querySelectorAll('option:not(:first-child)').forEach(o => o.remove());
+  lastOpportunities.forEach((r, idx) => {
+    const opt = document.createElement('option');
+    opt.value = idx;
+    opt.textContent = `${r.home ?? ''} vs ${r.away ?? ''} — ${r.family}${r.line != null ? ' ' + r.line : ''} — ${r.profit_pct.toFixed(2)}% (${r.verdict})`;
+    sel.appendChild(opt);
+  });
+}
+
+function addBetLegRow(prefill) {
+  const box = document.getElementById('bet-legs');
+  const row = document.createElement('div');
+  row.className = 'mq-row';
+  row.innerHTML = `
+    <select class="bl-bookmaker">${BOOKMAKERS.map(b => `<option value="${b}" ${prefill && prefill.bookmaker === b ? 'selected' : ''}>${b}</option>`).join('')}</select>
+    <input class="bl-selection" placeholder="selección (home/away/draw/over/under)" value="${prefill ? prefill.selection : ''}">
+    <input class="bl-odds" type="number" step="0.01" placeholder="cuota" value="${prefill ? prefill.odds : ''}">
+    <input class="bl-stake" type="number" step="0.01" placeholder="stake apostado €">
+    <button class="small" onclick="this.closest('.mq-row').remove()">Quitar</button>
+  `;
+  box.appendChild(row);
+}
+
+function onBetOpportunityChange() {
+  const idx = document.getElementById('bet-opportunity').value;
+  document.getElementById('bet-legs').innerHTML = '';
+  if (idx === '') {
+    document.getElementById('bet-home').value = '';
+    document.getElementById('bet-away').value = '';
+    document.getElementById('bet-market').value = '';
+    addBetLegRow();
+    addBetLegRow();
+    return;
+  }
+  const r = lastOpportunities[idx];
+  document.getElementById('bet-home').value = r.home ?? '';
+  document.getElementById('bet-away').value = r.away ?? '';
+  document.getElementById('bet-market').value = `${r.family}${r.line != null ? ' ' + r.line : ''}`;
+  for (const [selection, leg] of Object.entries(r.legs)) {
+    addBetLegRow({ bookmaker: leg.bookmaker, selection, odds: leg.price_decimal });
+  }
+}
+
+async function submitBet() {
+  const result = document.getElementById('bet-result');
+  const idx = document.getElementById('bet-opportunity').value;
+  const opp = idx !== '' ? lastOpportunities[idx] : null;
+
+  const legs = [];
+  document.querySelectorAll('#bet-legs .mq-row').forEach(row => {
+    const bookmaker = row.querySelector('.bl-bookmaker').value;
+    const selection = row.querySelector('.bl-selection').value.trim();
+    const odds = parseFloat(row.querySelector('.bl-odds').value);
+    const stake = parseFloat(row.querySelector('.bl-stake').value);
+    if (selection && odds && stake) legs.push({ bookmaker, selection, odds, stake });
+  });
+  if (legs.length < 2) {
+    result.className = 'mq-result err';
+    result.textContent = 'Añade al menos 2 piernas completas (casa, selección, cuota y stake).';
+    return;
+  }
+
+  const body = {
+    opportunity_id: opp ? opp.id : null,
+    sport_key: opp ? opp.sport_key : null,
+    event_id: opp ? opp.event_id : null,
+    home: document.getElementById('bet-home').value.trim() || null,
+    away: document.getElementById('bet-away').value.trim() || null,
+    market: document.getElementById('bet-market').value.trim() || null,
+    line: opp ? opp.line : null,
+    legs,
+    notes: document.getElementById('bet-notes').value.trim() || null,
+  };
+
+  const res = await fetch('/api/bets', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    result.className = 'mq-result err';
+    result.textContent = data.detail || 'Error al guardar la apuesta.';
+    return;
+  }
+  result.className = 'mq-result ok';
+  result.textContent = `Apuesta #${data.id} registrada.`;
+  document.getElementById('bet-opportunity').value = '';
+  document.getElementById('bet-notes').value = '';
+  onBetOpportunityChange();
+  await loadBets();
+}
+
+async function loadBets() {
+  const [betsRes, summaryRes] = await Promise.all([fetch('/api/bets'), fetch('/api/bets/summary')]);
+  const bets = await betsRes.json();
+  const summary = await summaryRes.json();
+
+  document.getElementById('bets-summary').textContent =
+    `${summary.total_bets} apuestas (${summary.pending} pendientes, ${summary.settled} liquidadas) · ` +
+    `apostado en liquidadas: ${summary.total_staked_settled.toFixed(2)} € · ` +
+    `beneficio real: ${summary.total_profit_settled.toFixed(2)} € · ` +
+    `ROI real: ${summary.roi_pct_settled.toFixed(2)}%`;
+
+  const tbody = document.getElementById('bets-rows');
+  tbody.innerHTML = '';
+  document.getElementById('bets-empty').style.display = bets.length ? 'none' : 'block';
+
+  for (const b of bets) {
+    const legsStr = b.legs.map(l => `${l.bookmaker} ${l.selection}@${l.odds} (${l.stake}€)`).join(' · ');
+    const settleCell = b.status === 'pending'
+      ? `<input type="number" step="0.01" class="settle-input" style="width:80px"> <button class="small" onclick="settleBet(${b.id}, this)">Liquidar</button>`
+      : `${b.total_returned.toFixed(2)} €`;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${new Date(b.placed_at + 'Z').toLocaleString()}</td>
+      <td>${b.home ?? ''} vs ${b.away ?? ''}</td>
+      <td>${b.market ?? ''}${b.line != null ? ' ' + b.line : ''}</td>
+      <td style="white-space:normal; max-width:340px;">${legsStr}</td>
+      <td>${b.total_staked.toFixed(2)} €</td>
+      <td>${b.status}</td>
+      <td>${settleCell}</td>
+      <td>${b.profit != null ? b.profit.toFixed(2) + ' €' : '-'}</td>
+    `;
+    tbody.appendChild(tr);
+  }
+}
+
+async function settleBet(id, btn) {
+  const input = btn.previousElementSibling;
+  const totalReturned = parseFloat(input.value);
+  if (isNaN(totalReturned)) return;
+  btn.disabled = true;
+  const res = await fetch(`/api/bets/${id}/settle`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ total_returned: totalReturned }),
+  });
+  if (res.ok) {
+    await loadBets();
+  } else {
+    btn.disabled = false;
+  }
+}
+
+addBetLegRow();
+addBetLegRow();
 </script>
 </body>
 </html>

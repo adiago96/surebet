@@ -52,6 +52,15 @@ def is_market_supported(family: MarketFamily) -> bool:
     return _REQUIRED_SELECTIONS.get(family) is not None
 
 
+def required_selections(family: MarketFamily) -> frozenset[str] | None:
+    """Selecciones que un grupo debe tener (y solo esas) para ser evaluable.
+
+    Expuesto para que la UI de "Captura rápida" (`surebet/api/main.py`) sepa
+    qué campos pedir al usuario sin duplicar `_REQUIRED_SELECTIONS`.
+    """
+    return _REQUIRED_SELECTIONS.get(family)
+
+
 def group_by_market(quotes: list[OddQuote]) -> dict[tuple, list[OddQuote]]:
     groups: dict[tuple, list[OddQuote]] = defaultdict(list)
     for q in quotes:
