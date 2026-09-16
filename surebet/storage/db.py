@@ -13,7 +13,7 @@ from surebet.config import settings
 from surebet.engine.arbitrage import ArbitrageOpportunity
 from surebet.engine.risk import RiskAssessment
 from surebet.engine.stakes import StakePlan
-from surebet.models import Event, OddQuote
+from surebet.models import Event, MarketKey, OddQuote
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS odds_snapshots (
@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS odds_snapshots (
     event_id TEXT NOT NULL,
     home TEXT,
     away TEXT,
+    commence_time TEXT,
     family TEXT NOT NULL,
     period TEXT NOT NULL,
     rules TEXT NOT NULL,
@@ -34,6 +35,21 @@ CREATE TABLE IF NOT EXISTS odds_snapshots (
 );
 CREATE INDEX IF NOT EXISTS idx_snapshots_event ON odds_snapshots (sport_key, event_id);
 CREATE INDEX IF NOT EXISTS idx_snapshots_time ON odds_snapshots (received_at);
+CREATE INDEX IF NOT EXISTS idx_snapshots_commence ON odds_snapshots (commence_time);
+
+-- Evita reenviar la misma alerta de Telegram en cada pasada mientras el
+-- partido siga sin empezar: una fila por mercado (evento+familia+periodo+
+-- reglas+línea) ya alertado. Se purga junto con odds_snapshots cuando el
+-- partido ya ha empezado (ver prune_finished_events).
+CREATE TABLE IF NOT EXISTS alerted_opportunities (
+    market_key TEXT PRIMARY KEY,
+    sport_key TEXT NOT NULL,
+    event_id TEXT NOT NULL,
+    commence_time TEXT,
+    first_alerted_at TEXT NOT NULL,
+    last_profit_pct REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_alerted_commence ON alerted_opportunities (commence_time);
 
 CREATE TABLE IF NOT EXISTS opportunities (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -89,6 +105,7 @@ def save_snapshot(conn: sqlite3.Connection, event: Event, quotes: list[OddQuote]
             q.market.event_id,
             event.home,
             event.away,
+            event.commence_time.isoformat(),
             q.market.family.value,
             q.market.period.value,
             q.market.rules.value,
@@ -101,9 +118,31 @@ def save_snapshot(conn: sqlite3.Connection, event: Event, quotes: list[OddQuote]
     conn.executemany(
         """INSERT INTO odds_snapshots
            (received_at, bookmaker, source, sport_key, event_id, home, away,
-            family, period, rules, line, selection, price_decimal)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            commence_time, family, period, rules, line, selection, price_decimal)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         rows,
+    )
+
+
+def _market_key_str(market: MarketKey) -> str:
+    m = market
+    return f"{m.sport_key}|{m.event_id}|{m.family.value}|{m.period.value}|{m.rules.value}|{m.line}"
+
+
+def already_alerted(conn: sqlite3.Connection, market: MarketKey) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM alerted_opportunities WHERE market_key = ?", (_market_key_str(market),)
+    ).fetchone()
+    return row is not None
+
+
+def mark_alerted(conn: sqlite3.Connection, event: Event, market: MarketKey, profit_pct: float) -> None:
+    conn.execute(
+        """INSERT INTO alerted_opportunities
+               (market_key, sport_key, event_id, commence_time, first_alerted_at, last_profit_pct)
+           VALUES (?,?,?,?,datetime('now'),?)
+           ON CONFLICT(market_key) DO UPDATE SET last_profit_pct = excluded.last_profit_pct""",
+        (_market_key_str(market), market.sport_key, market.event_id, event.commence_time.isoformat(), profit_pct),
     )
 
 
@@ -164,6 +203,27 @@ def prune_old_snapshots(conn: sqlite3.Connection, retention_days: int | None = N
         f"DELETE FROM odds_snapshots WHERE received_at < datetime('now', '-{int(days)} days')"
     )
     return cur.rowcount
+
+
+def prune_finished_events(conn: sqlite3.Connection, grace_hours: int | None = None) -> tuple[int, int]:
+    """Borra snapshots y alertas ya registradas de partidos cuya hora de
+    inicio (`commence_time`) ya pasó (+ un margen de gracia para cubrir la
+    duración del partido). Esto es lo que de verdad mantiene la base de datos
+    pequeña: no tiene sentido seguir guardando ni "recordando" un partido que
+    ya se ha jugado. `prune_old_snapshots` sigue existiendo como red de
+    seguridad para filas sin `commence_time` fiable.
+
+    Devuelve (snapshots_borrados, alertas_olvidadas).
+    """
+    hours = grace_hours if grace_hours is not None else settings.finished_event_grace_hours
+    cutoff = f"datetime('now', '-{int(hours)} hours')"
+    snap_cur = conn.execute(
+        f"DELETE FROM odds_snapshots WHERE commence_time IS NOT NULL AND commence_time < {cutoff}"
+    )
+    alert_cur = conn.execute(
+        f"DELETE FROM alerted_opportunities WHERE commence_time IS NOT NULL AND commence_time < {cutoff}"
+    )
+    return snap_cur.rowcount, alert_cur.rowcount
 
 
 def recent_opportunities(conn: sqlite3.Connection, limit: int = 200) -> list[sqlite3.Row]:

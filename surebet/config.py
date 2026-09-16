@@ -111,6 +111,14 @@ class Settings:
     snapshot_retention_days: int = field(
         default_factory=lambda: _int("SNAPSHOT_RETENTION_DAYS", 3)
     )
+    # Horas de margen tras la hora de inicio de un evento antes de considerar
+    # que "ya se ha jugado" y purgar sus snapshots y su registro de alerta
+    # (para no reenviar la misma alerta ni seguir ocupando espacio con un
+    # partido que ya ha terminado). 4h cubre partido + posible prórroga con
+    # margen para deportes lentos de liquidar.
+    finished_event_grace_hours: int = field(
+        default_factory=lambda: _int("FINISHED_EVENT_GRACE_HOURS", 4)
+    )
     # Se resuelve siempre respecto a PROJECT_ROOT (no al directorio de trabajo
     # actual) por el mismo motivo que `.env` arriba.
     sqlite_path: str = field(

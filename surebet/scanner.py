@@ -23,7 +23,16 @@ from surebet.engine.stakes import compute_stake_plan
 from surebet.models import Event
 from surebet.normalize.cross_source import unify
 from surebet.normalize.markets import best_price_per_selection, group_by_market, is_exhaustive
-from surebet.storage.db import get_connection, init_db, prune_old_snapshots, save_opportunity, save_snapshot
+from surebet.storage.db import (
+    already_alerted,
+    get_connection,
+    init_db,
+    mark_alerted,
+    prune_finished_events,
+    prune_old_snapshots,
+    save_opportunity,
+    save_snapshot,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +93,8 @@ async def run_scan_once(collectors: list[Collector] | None = None) -> list[dict]
 
             save_opportunity(conn, event, opportunity, risk, stake_plan)
 
+            already_sent = already_alerted(conn, market)
+
             entry = {
                 "event": f"{event.home} vs {event.away}",
                 "sport": event.sport_group,
@@ -93,18 +104,38 @@ async def run_scan_once(collectors: list[Collector] | None = None) -> list[dict]
                 "verdict": risk.verdict.value,
                 "execution_risk": risk.execution_risk_score,
                 "max_age_seconds": risk.max_age_seconds,
+                "already_alerted": already_sent,
             }
             summary.append(entry)
 
-            if risk.verdict in (Verdict.VALID_ARB, Verdict.SUSPICIOUS_ARB) and (
-                opportunity.profit_pct >= settings.min_profit_pct_to_alert
-            ):
+            should_alert = (
+                risk.verdict in (Verdict.VALID_ARB, Verdict.SUSPICIOUS_ARB)
+                and opportunity.profit_pct >= settings.min_profit_pct_to_alert
+            )
+            if should_alert and not already_sent:
+                # Una alerta por mercado (evento+familia+periodo+reglas+línea),
+                # no una por pasada: mientras el partido no empiece, la cuota
+                # puede moverse un poco sin que eso justifique repetir el
+                # mismo aviso en Telegram cada vez que corre el scanner.
                 text = format_alert(event, opportunity, risk, stake_plan)
                 await send_telegram_message(text)
+                mark_alerted(conn, event, market, opportunity.profit_pct)
+            elif should_alert and already_sent:
+                # Seguimos registrando el profit_pct más reciente aunque no
+                # reenviemos el mensaje, para que el dashboard/backtest vea
+                # cómo evolucionó la oportunidad.
+                mark_alerted(conn, event, market, opportunity.profit_pct)
 
-        pruned = prune_old_snapshots(conn)
-        if pruned:
-            logger.info("Purgados %d snapshots antiguos (> %d días)", pruned, settings.snapshot_retention_days)
+        snaps_pruned, alerts_pruned = prune_finished_events(conn)
+        old_snaps_pruned = prune_old_snapshots(conn)
+        total_pruned = snaps_pruned + old_snaps_pruned
+        if total_pruned or alerts_pruned:
+            logger.info(
+                "Purgados %d snapshots (partido ya jugado o > %d días) y %d registros de alerta de partidos terminados",
+                total_pruned,
+                settings.snapshot_retention_days,
+                alerts_pruned,
+            )
 
         conn.commit()
 

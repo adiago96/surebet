@@ -228,7 +228,8 @@ Surebet/
       arbitrage.py             Motor matemático de arbitraje
       stakes.py                 Calculadora de stakes con redondeo real
       risk.py                    Frescura de datos + execution risk score
-    storage/db.py               SQLite: snapshots + oportunidades + backtest
+    storage/db.py               SQLite: snapshots + oportunidades + backtest +
+                                 dedupe de alertas + purga de partidos ya jugados
     alerts/telegram.py           Formato y envío de alertas Telegram
     api/main.py + static/dashboard.html    Dashboard FastAPI
     scanner.py                   Orquestador end-to-end
