@@ -1,0 +1,50 @@
+name: Surebet Scanner
+
+# Se ejecuta en la nube de GitHub Actions, no en tu ordenador. Gratis (repo
+# público = minutos ilimitados). La cadencia (1 vez al día) está calculada
+# para caber con margen en el free tier de The Odds API (500 créditos/mes) —
+# ver docs/INVESTIGACION_Y_DISENO.md sección 16-17 antes de tocar el cron.
+on:
+  schedule:
+    - cron: "0 8 * * *" # 08:00 UTC (~09-10h en España) todos los días
+  workflow_dispatch: {} # permite lanzarlo a mano desde la pestaña "Actions"
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Crear .env desde los secrets del repositorio
+        run: |
+          cat > .env << EOF
+          THE_ODDS_API_KEY=${{ secrets.THE_ODDS_API_KEY }}
+          THE_ODDS_API_REGIONS=eu
+          PINNACLE_ENABLED=true
+          SPORTS=soccer_spain_la_liga,soccer_uefa_champs_league,tennis_atp_us_open,basketball_nba
+          MARKETS=h2h,spreads,totals
+          BANKROLL_EUR=100
+          DEFAULT_MIN_STAKE_INCREMENT=1.0
+          DEFAULT_MAX_STAKE_PER_BOOKMAKER=500
+          MIN_PROFIT_PCT_TO_ALERT=0.5
+          SUSPICIOUS_PROFIT_PCT=12.0
+          TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }}
+          SQLITE_PATH=data/surebet.db
+          EOF
+
+      - name: Ejecutar el scanner (una pasada)
+        run: python scripts/run_scanner.py --once
+
+      # Nota: cada ejecución es efímera (no se conserva el histórico de SQLite
+      # entre pasadas en la nube, para no crecer sin límite en un repo
+      # público). El valor de esta automatización es la alerta de Telegram en
+      # el momento; para histórico/backtest persistente, ejecuta el scanner
+      # en tu propio equipo (ver README) donde sí se conserva `data/surebet.db`.

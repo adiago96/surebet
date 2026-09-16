@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Surebet Dashboard</title>
+<style>
+  body { font-family: -apple-system, Segoe UI, Arial, sans-serif; background:#0f1115; color:#e6e6e6; margin:0; padding:20px; }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  .sub { color:#9aa0a6; font-size: 13px; margin-bottom: 16px; }
+  .filters { display:flex; gap:10px; flex-wrap:wrap; margin-bottom: 16px; }
+  .filters input, .filters select { background:#1b1e24; color:#e6e6e6; border:1px solid #333; padding:6px 8px; border-radius:6px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { padding: 8px 10px; border-bottom: 1px solid #2a2d33; text-align: left; white-space: nowrap; }
+  th { cursor:pointer; color:#9aa0a6; font-weight:600; position: sticky; top:0; background:#0f1115; }
+  tr:hover { background:#161920; }
+  .VALID_ARB { color:#4ade80; }
+  .SUSPICIOUS_ARB { color:#facc15; }
+  .STALE_DO_NOT_BET { color:#f87171; }
+  .ROUNDING_UNPROFITABLE { color:#fb923c; }
+  .NOT_ARBITRAGE { color:#666; }
+  .risk-low { color:#4ade80; }
+  .risk-med { color:#facc15; }
+  .risk-high { color:#f87171; }
+  .empty { color:#666; padding: 40px 0; text-align:center; }
+</style>
+</head>
+<body>
+  <h1>Surebet Dashboard</h1>
+  <div class="sub">Oportunidades de arbitraje detectadas · matemático ≠ ejecutable, revisa siempre el veredicto y el riesgo</div>
+
+  <div class="filters">
+    <input id="f-sport" placeholder="Deporte contiene...">
+    <input id="f-minprofit" type="number" step="0.1" placeholder="Beneficio mínimo %">
+    <select id="f-verdict">
+      <option value="">Todos los veredictos</option>
+      <option value="VALID_ARB">VALID_ARB</option>
+      <option value="SUSPICIOUS_ARB">SUSPICIOUS_ARB</option>
+      <option value="ROUNDING_UNPROFITABLE">ROUNDING_UNPROFITABLE</option>
+      <option value="STALE_DO_NOT_BET">STALE_DO_NOT_BET</option>
+    </select>
+    <select id="f-sort">
+      <option value="profit_desc">Mayor beneficio</option>
+      <option value="risk_asc">Menor riesgo</option>
+      <option value="age_asc">Menor antigüedad</option>
+    </select>
+    <button onclick="load()">Refrescar</button>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Hora</th><th>Deporte</th><th>Evento</th><th>Mercado</th><th>Línea</th>
+        <th>Beneficio %</th><th>Veredicto</th><th>Riesgo</th><th>Antigüedad (s)</th>
+        <th>Stake total</th><th>Beneficio €</th><th>ROI %</th>
+      </tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <div id="empty" class="empty" style="display:none">Sin oportunidades todavía. Lanza el scanner: <code>python scripts/run_scanner.py</code></div>
+
+<script>
+async function load() {
+  const res = await fetch('/api/opportunities?limit=500');
+  let data = await res.json();
+
+  const sport = document.getElementById('f-sport').value.toLowerCase();
+  const minProfit = parseFloat(document.getElementById('f-minprofit').value) || -Infinity;
+  const verdict = document.getElementById('f-verdict').value;
+  const sort = document.getElementById('f-sort').value;
+
+  data = data.filter(r =>
+    (!sport || r.sport_key.toLowerCase().includes(sport)) &&
+    r.profit_pct >= minProfit &&
+    (!verdict || r.verdict === verdict)
+  );
+
+  if (sort === 'profit_desc') data.sort((a,b) => b.profit_pct - a.profit_pct);
+  if (sort === 'risk_asc') data.sort((a,b) => a.execution_risk - b.execution_risk);
+  if (sort === 'age_asc') data.sort((a,b) => a.max_age_seconds - b.max_age_seconds);
+
+  const rows = document.getElementById('rows');
+  rows.innerHTML = '';
+  document.getElementById('empty').style.display = data.length ? 'none' : 'block';
+
+  for (const r of data) {
+    const riskClass = r.execution_risk <= 20 ? 'risk-low' : (r.execution_risk <= 50 ? 'risk-med' : 'risk-high');
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${new Date(r.detected_at + 'Z').toLocaleTimeString()}</td>
+      <td>${r.sport_key}</td>
+      <td>${r.home ?? ''} vs ${r.away ?? ''}</td>
+      <td>${r.family}</td>
+      <td>${r.line ?? ''}</td>
+      <td>${r.profit_pct.toFixed(2)}%</td>
+      <td class="${r.verdict}">${r.verdict}</td>
+      <td class="${riskClass}">${r.execution_risk}/100</td>
+      <td>${r.max_age_seconds.toFixed(1)}</td>
+      <td>${r.total_stake ? r.total_stake.toFixed(2) + ' €' : '-'}</td>
+      <td>${r.profit_worst_case ? r.profit_worst_case.toFixed(2) + ' €' : '-'}</td>
+      <td>${r.roi_pct ? r.roi_pct.toFixed(2) + '%' : '-'}</td>
+    `;
+    rows.appendChild(tr);
+  }
+}
+document.querySelectorAll('.filters input, .filters select').forEach(el => el.addEventListener('input', load));
+load();
+setInterval(load, 15000);
+</script>
+</body>
+</html>
